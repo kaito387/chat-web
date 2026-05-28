@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OS Study Chat — DeepSeek V4 Flash</title>
+  <style>
+    /* ---------- Reset & Base ---------- */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #1a1b26;
+      --surface: #24283b;
+      --surface2: #1f2335;
+      --border: #414868;
+      --text: #c0caf5;
+      --text-dim: #565f89;
+      --accent: #7aa2f7;
+      --accent-hover: #89b4fa;
+      --user-bubble: #33406b;
+      --assistant-bubble: #1f2335;
+      --thinking-bg: #1a1e2e;
+      --thinking-border: #3b4261;
+      --thinking-text: #9aa5ce;
+      --code-bg: #16161e;
+      --error: #f7768e;
+      --success: #9ece6a;
+      --radius: 10px;
+      --radius-sm: 6px;
+      --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+      --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      --transition: 0.15s ease;
+    }
+
+    html, body {
+      height: 100%; overflow: hidden;
+      font-family: var(--font-sans);
+      background: var(--bg); color: var(--text);
+      font-size: 15px; line-height: 1.6;
+    }
+
+    /* ---------- Layout ---------- */
+    .app {
+      display: flex; flex-direction: column; height: 100vh; max-width: 900px;
+      margin: 0 auto; padding: 0 16px;
+    }
+
+    /* ---------- Header ---------- */
+    .header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 0; border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .header h1 {
+      font-size: 18px; font-weight: 600;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .header h1 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--success); }
+    .header .actions { display: flex; gap: 8px; }
+    .header button {
+      background: var(--surface); color: var(--text-dim); border: 1px solid var(--border);
+      padding: 6px 12px; border-radius: var(--radius-sm); cursor: pointer;
+      font-size: 13px; transition: all var(--transition);
+    }
+    .header button:hover { color: var(--text); border-color: var(--text-dim); }
+
+    .header select {
+      background: var(--surface); color: var(--text); border: 1px solid var(--border);
+      padding: 6px 10px; border-radius: var(--radius-sm); cursor: pointer;
+      font-size: 13px; font-family: var(--font-sans); outline: none;
+      transition: all var(--transition); appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23565f89'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 8px center; padding-right: 26px;
+    }
+    .header select:hover { border-color: var(--text-dim); color: var(--text); }
+    .header select:focus { border-color: var(--accent); }
+
+    /* ---------- Chat Area ---------- */
+    .chat {
+      flex: 1; overflow-y: auto; padding: 16px 0;
+      display: flex; flex-direction: column; gap: 16px;
+      scroll-behavior: smooth;
+    }
+    .chat::-webkit-scrollbar { width: 6px; }
+    .chat::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    /* Messages */
+    .msg { display: flex; flex-direction: column; max-width: 85%; animation: fadeIn 0.2s ease; }
+    .msg.user { align-self: flex-end; }
+    .msg.assistant { align-self: flex-start; width: 100%; max-width: 100%; }
+
+    .bubble {
+      padding: 12px 16px; border-radius: var(--radius); line-height: 1.65;
+      word-wrap: break-word; overflow-wrap: break-word;
+    }
+    .msg.user .bubble { background: var(--user-bubble); border-bottom-right-radius: 4px; }
+    .msg.assistant .bubble { background: var(--assistant-bubble); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+
+    .msg .role-label {
+      font-size: 11px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.5px; margin-bottom: 2px; color: var(--text-dim);
+    }
+    .msg.user .role-label { text-align: right; color: var(--accent); }
+
+    /* Thinking */
+    .thinking-block {
+      margin: 4px 0 8px; border: 1px solid var(--thinking-border);
+      border-radius: var(--radius-sm); background: var(--thinking-bg);
+      overflow: hidden;
+    }
+    .thinking-header {
+      display: flex; align-items: center; gap: 6px; padding: 6px 10px;
+      cursor: pointer; user-select: none; font-size: 12px; color: var(--thinking-text);
+    }
+    .thinking-header:hover { background: rgba(255,255,255,0.03); }
+    .thinking-header .arrow { transition: transform var(--transition); font-size: 10px; }
+    .thinking-block.open .thinking-header .arrow { transform: rotate(90deg); }
+    .thinking-body {
+      display: none; padding: 8px 12px 10px; font-size: 13px; color: var(--thinking-text);
+      line-height: 1.55; border-top: 1px solid var(--thinking-border);
+      font-style: italic; white-space: pre-wrap;
+    }
+    .thinking-block.open .thinking-body { display: block; }
+
+    /* Markdown-like styling */
+    .bubble p { margin: 0 0 8px; }
+    .bubble p:last-child { margin-bottom: 0; }
+    .bubble code {
+      font-family: var(--font-mono); font-size: 0.88em;
+      background: var(--code-bg); padding: 2px 6px; border-radius: 4px;
+    }
+    .bubble pre {
+      background: var(--code-bg); border-radius: var(--radius-sm);
+      padding: 12px 14px; overflow-x: auto; margin: 8px 0;
+      font-family: var(--font-mono); font-size: 0.85em; line-height: 1.5;
+      border: 1px solid var(--border);
+    }
+    .bubble pre code { background: none; padding: 0; font-size: inherit; }
+    .bubble ul, .bubble ol { margin: 4px 0 8px; padding-left: 20px; }
+    .bubble li { margin-bottom: 3px; }
+    .bubble h1,.bubble h2,.bubble h3,.bubble h4 { margin: 12px 0 6px; font-weight: 600; }
+    .bubble h1 { font-size: 1.2em; } .bubble h2 { font-size: 1.1em; } .bubble h3 { font-size: 1.05em; }
+    .bubble blockquote {
+      border-left: 3px solid var(--accent); padding: 4px 0 4px 12px;
+      margin: 8px 0; color: var(--text-dim);
+    }
+    .bubble strong { font-weight: 600; color: #e0e4ff; }
+    .bubble em { font-style: italic; }
+    .bubble hr { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
+    .bubble table { border-collapse: collapse; margin: 8px 0; font-size: 0.9em; }
+    .bubble th, .bubble td { border: 1px solid var(--border); padding: 6px 10px; text-align: left; }
+    .bubble th { background: var(--surface2); font-weight: 600; }
+
+    /* Streaming cursor */
+    .streaming-cursor::after {
+      content: '▊'; animation: blink 1s step-end infinite;
+      color: var(--accent); margin-left: 1px;
+    }
+    @keyframes blink { 50% { opacity: 0; } }
+
+    /* ---------- Input Area ---------- */
+    .input-area {
+      flex-shrink: 0; padding: 12px 0 16px;
+      border-top: 1px solid var(--border);
+    }
+    .input-row {
+      display: flex; gap: 10px; align-items: flex-end;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 8px 10px 8px 14px;
+      transition: border-color var(--transition);
+    }
+    .input-row:focus-within { border-color: var(--accent); }
+
+    .input-row textarea {
+      flex: 1; background: transparent; border: none; outline: none;
+      color: var(--text); font-family: var(--font-sans); font-size: 14px;
+      line-height: 1.5; resize: none; min-height: 24px; max-height: 200px;
+      padding: 4px 0;
+    }
+    .input-row textarea::placeholder { color: var(--text-dim); }
+    .input-row textarea::-webkit-scrollbar { width: 4px; }
+    .input-row textarea::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    .send-btn {
+      flex-shrink: 0; width: 38px; height: 38px;
+      border-radius: var(--radius-sm); border: none;
+      background: var(--accent); color: var(--bg);
+      font-size: 18px; cursor: pointer; display: flex;
+      align-items: center; justify-content: center;
+      transition: all var(--transition);
+    }
+    .send-btn:hover { background: var(--accent-hover); transform: scale(1.05); }
+    .send-btn:disabled { background: var(--border); cursor: not-allowed; transform: none; }
+    .send-btn svg { width: 18px; height: 18px; }
+
+    .input-hint {
+      font-size: 11px; color: var(--text-dim); margin-top: 6px; text-align: center;
+    }
+    .input-hint kbd {
+      background: var(--surface); border: 1px solid var(--border);
+      padding: 1px 5px; border-radius: 3px; font-family: var(--font-mono); font-size: 10px;
+    }
+
+    /* ---------- Welcome ---------- */
+    .welcome {
+      flex: 1; display: flex; flex-direction: column; align-items: center;
+      justify-content: center; text-align: center; gap: 12px;
+      padding: 40px 20px;
+    }
+    .welcome h2 { font-size: 22px; font-weight: 600; }
+    .welcome p { color: var(--text-dim); max-width: 500px; font-size: 14px; }
+    .welcome .suggestions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 12px; }
+    .welcome .suggestion {
+      background: var(--surface); border: 1px solid var(--border);
+      padding: 8px 14px; border-radius: 20px; font-size: 13px;
+      cursor: pointer; transition: all var(--transition); color: var(--text-dim);
+    }
+    .welcome .suggestion:hover { border-color: var(--accent); color: var(--text); }
+
+    /* ---------- Typing indicator ---------- */
+    .typing-indicator { display: flex; gap: 4px; padding: 12px 16px; }
+    .typing-indicator span {
+      width: 6px; height: 6px; border-radius: 50%; background: var(--text-dim);
+      animation: typingBounce 1.4s infinite ease-in-out;
+    }
+    .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+    .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes typingBounce {
+      0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+      40% { transform: scale(1); opacity: 1; }
+    }
+
+    /* ---------- Animations ---------- */
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* ---------- KaTeX overrides for dark theme ---------- */
+    .katex { font-size: 1.05em; color: #c0caf5; }
+    .katex-display { margin: 14px 0; overflow-x: auto; overflow-y: hidden; }
+    .katex-display > .katex { font-size: 1.1em; }
+    .katex .mord, .katex .mbin, .katex .mrel, .katex .mopen, .katex .mclose,
+    .katex .mpunct, .katex .minner { color: #c0caf5; }
+    .katex .mfrac .frac-line { border-bottom-color: #7aa2f7; }
+    .katex .vlist-t > .vlist-t2 > .vlist-r > .vlist { border-color: #414868; }
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+</head>
+<body>
+<div class="app">
+  <!-- Header -->
+  <header class="header">
+    <h1><span class="dot"></span> <span id="headerTitle">OS Study Chat</span></h1>
+    <div class="actions">
+      <select id="modeSelector" onchange="switchMode(this.value)" title="Select domain">
+        <option value="general">💬 General</option>
+        <option value="os">🖥 OS</option>
+        <option value="english">🇬🇧 English</option>
+        <option value="japanese">🇯🇵 日本語</option>
+        <option value="deeplearning">🧠 Deep Learning</option>
+        <option value="signals">📡 Signals & Systems</option>
+      </select>
+      <button onclick="clearChat()" title="Clear chat history">🗑 Clear</button>
+    </div>
+  </header>
+
+  <!-- Chat area -->
+  <div id="chat" class="chat">
+    <div class="welcome" id="welcome">
+      <h2 id="welcomeTitle">📚 OS Homework Helper</h2>
+      <p id="welcomeDesc">Ask me anything about Operating Systems — threads, processes, memory, file systems, scheduling, and more.</p>
+      <div class="suggestions" id="suggestions">
+        <span class="suggestion" onclick="sendSuggestion(this.textContent)">Explain Amdahl's Law</span>
+        <span class="suggestion" onclick="sendSuggestion(this.textContent)">Multithreading vs single-threading examples</span>
+        <span class="suggestion" onclick="sendSuggestion(this.textContent)">What is a race condition?</span>
+        <span class="suggestion" onclick="sendSuggestion(this.textContent)">Difference between process and thread</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Input -->
+  <div class="input-area">
+    <div class="input-row">
+      <textarea id="userInput" rows="1"
+        placeholder="Ask about OS concepts, homework problems..."
+        onkeydown="handleKey(event)"
+        oninput="autoResize(this)"></textarea>
+      <button class="send-btn" id="sendBtn" onclick="sendMessage()" title="Send (Enter)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
+        </svg>
+      </button>
+    </div>
+    <div class="input-hint">
+      Press <kbd>Enter</kbd> to send · <kbd>Shift+Enter</kbd> for new line
+    </div>
+  </div>
+</div>
+
+<script>
+// ---------- State ----------
+let chatHistory = [];  // {role, content}
+let isStreaming = false;
+let currentMode = 'general';
+let modeData = {};  // cached from /modes
+
+// ---------- DOM refs ----------
+const chatEl = document.getElementById('chat');
+const inputEl = document.getElementById('userInput');
+const sendBtn = document.getElementById('sendBtn');
+const welcomeEl = document.getElementById('welcome');
+const welcomeTitle = document.getElementById('welcomeTitle');
+const welcomeDesc = document.getElementById('welcomeDesc');
+const suggestionsEl = document.getElementById('suggestions');
+const modeSelector = document.getElementById('modeSelector');
+const headerTitle = document.getElementById('headerTitle');
+
+// ---------- Auto-resize textarea ----------
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 200) + 'px';
+}
+
+// ---------- Key handling ----------
+function handleKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+}
+
+// ---------- Send suggestion ----------
+function sendSuggestion(text) {
+  inputEl.value = text;
+  sendMessage();
+}
+
+// ---------- Send message ----------
+async function sendMessage() {
+  const text = inputEl.value.trim();
+  if (!text || isStreaming) return;
+
+  isStreaming = true;
+  sendBtn.disabled = true;
+  inputEl.value = '';
+  inputEl.style.height = 'auto';
+
+  // Hide welcome
+  if (welcomeEl) welcomeEl.style.display = 'none';
+
+  // Add user message
+  addMessage('user', text);
+  chatHistory.push({ role: 'user', content: text });
+
+  // Add assistant placeholder
+  const { msgEl, bubbleEl } = addMessage('assistant', '', true);
+  let thinkingEl = null;
+  let thinkingBodyEl = null;
+  let fullContent = '';
+  let fullThinking = '';
+
+  try {
+    const resp = await fetch('/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: text, history: chatHistory.slice(0, -1), mode: currentMode })
+    });
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const data = line.slice(6);
+        if (!data) continue;
+
+        try {
+          const parsed = JSON.parse(data);
+
+          if (parsed.type === 'thinking') {
+            fullThinking += parsed.content;
+            if (!thinkingEl) {
+              thinkingEl = document.createElement('div');
+              thinkingEl.className = 'thinking-block open';
+              thinkingEl.innerHTML = `
+                <div class="thinking-header" onclick="this.parentElement.classList.toggle('open')">
+                  <span class="arrow">▶</span> 💭 Thinking
+                </div>
+                <div class="thinking-body"></div>
+              `;
+              bubbleEl.parentElement.insertBefore(thinkingEl, bubbleEl);
+              thinkingBodyEl = thinkingEl.querySelector('.thinking-body');
+            }
+            thinkingBodyEl.textContent = fullThinking;
+          } else if (parsed.type === 'content') {
+            fullContent += parsed.content;
+            bubbleEl.innerHTML = renderMarkdown(fullContent) + '<span class="streaming-cursor"></span>';
+          } else if (parsed.type === 'done') {
+            // Remove cursor
+            bubbleEl.innerHTML = renderMarkdown(fullContent);
+            bubbleEl.classList.remove('streaming-cursor');
+          } else if (parsed.type === 'error') {
+            bubbleEl.innerHTML = `<span style="color:var(--error)">⚠️ Error: ${escapeHtml(parsed.content)}</span>`;
+          }
+        } catch (e) { /* partial chunk, ignore */ }
+      }
+    }
+
+    // Finalize
+    bubbleEl.innerHTML = renderMarkdown(fullContent) || '<span style="color:var(--text-dim)">(empty response)</span>';
+
+    chatHistory.push({ role: 'assistant', content: fullContent });
+
+  } catch (err) {
+    bubbleEl.innerHTML = `<span style="color:var(--error)">⚠️ Connection error: ${escapeHtml(err.message)}</span>`;
+  }
+
+  isStreaming = false;
+  sendBtn.disabled = false;
+  inputEl.focus();
+}
+
+// ---------- Add message to UI ----------
+function addMessage(role, content, isPlaceholder) {
+  const msgEl = document.createElement('div');
+  msgEl.className = `msg ${role}`;
+
+  if (role === 'user') {
+    msgEl.innerHTML = `
+      <div class="role-label">You</div>
+      <div class="bubble">${escapeHtml(content)}</div>
+    `;
+  } else {
+    msgEl.innerHTML = `
+      <div class="role-label">DeepSeek V4 Flash</div>
+      <div class="bubble">${isPlaceholder ? '<div class="typing-indicator"><span></span><span></span><span></span></div>' : renderMarkdown(content)}</div>
+    `;
+  }
+
+  chatEl.appendChild(msgEl);
+  chatEl.scrollTop = chatEl.scrollHeight;
+
+  return {
+    msgEl,
+    bubbleEl: msgEl.querySelector('.bubble')
+  };
+}
+
+// ---------- Clear chat ----------
+function clearChat() {
+  chatHistory = [];
+  renderWelcome();
+  inputEl.focus();
+}
+
+// ---------- Switch domain mode ----------
+function switchMode(mode) {
+  currentMode = mode;
+  chatHistory = [];  // clear history when switching domains
+  renderWelcome();
+  inputEl.focus();
+}
+
+// ---------- Render welcome screen for current mode ----------
+function renderWelcome() {
+  const data = modeData[currentMode] || {};
+  const suggestions = data.suggestions || [];
+
+  welcomeTitle.textContent = data.welcome_title || 'Ask me anything';
+  welcomeDesc.textContent = data.welcome_desc || 'Select a domain and start chatting.';
+  suggestionsEl.innerHTML = suggestions
+    .map(s => `<span class="suggestion" onclick="sendSuggestion('${s.replace(/'/g, "\\'")}')">${escapeHtml(s)}</span>`)
+    .join('');
+  headerTitle.textContent = data.welcome_title || 'Study Chat';
+
+  chatEl.innerHTML = '';
+  chatEl.appendChild(welcomeEl);
+  welcomeEl.style.display = '';
+  welcomeEl.style.flex = '1';
+}
+
+// ---------- Markdown → HTML (using marked.js + KaTeX) ----------
+marked.setOptions({
+  breaks: true,
+  gfm: true,
+  mangle: false,
+  headerIds: false,
+});
+
+function renderMarkdown(text) {
+  if (!text) return '';
+
+  // --- Protect LaTeX from marked's backslash escaping ---
+  const mathBlocks = [];
+  // Display math: $$...$$ and \[...\]
+  let protected_ = text.replace(/(\$\$[\s\S]+?\$\$|\\\[[\s\S]+?\\\])/g, (match) => {
+    const idx = mathBlocks.length;
+    mathBlocks.push(match);
+    return `%%MATHBLOCK_${idx}%%`;
+  });
+  // Inline math: $...$ and \(...\)
+  protected_ = protected_.replace(/(\$[^\$\n]+?\$|\\\([^\n]+?\\\))/g, (match) => {
+    const idx = mathBlocks.length;
+    mathBlocks.push(match);
+    return `%%MATHBLOCK_${idx}%%`;
+  });
+
+  // --- Parse markdown ---
+  let html = marked.parse(protected_);
+
+  // --- Restore LaTeX placeholders ---
+  mathBlocks.forEach((math, i) => {
+    html = html.replace(`%%MATHBLOCK_${i}%%`, math);
+  });
+
+  // --- Render LaTeX with KaTeX ---
+  try {
+    const temp = document.createElement('div');
+    temp.innerHTML = html;
+    renderMathInElement(temp, {
+      delimiters: [
+        {left: '$$', right: '$$', display: true},
+        {left: '$', right: '$', display: false},
+        {left: '\\[', right: '\\]', display: true},
+        {left: '\\(', right: '\\)', display: false},
+      ],
+      throwOnError: false,
+      strict: false,
+      trust: true,
+    });
+    return temp.innerHTML;
+  } catch (e) {
+    return html;
+  }
+}
+
+// ---------- Escape HTML ----------
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// ---------- Init ----------
+inputEl.focus();
+
+// Fetch available modes on load
+fetch('/modes')
+  .then(r => r.json())
+  .then(data => {
+    modeData = data;
+    // Populate mode selector dynamically
+    const options = Object.entries(data).map(([id, cfg]) =>
+      `<option value="${id}">${cfg.label}</option>`
+    ).join('');
+    modeSelector.innerHTML = options;
+    modeSelector.value = currentMode;
+    renderWelcome();
+  })
+  .catch(err => console.warn('Failed to fetch modes:', err));
+
+// Check health
+fetch('/health')
+  .then(r => r.json())
+  .then(data => {
+    if (!data.has_key) {
+      console.warn('DEEPSEEK_API_KEY not set — chat will not work.');
+    }
+  })
+  .catch(() => console.warn('Server unreachable'));
+</script>
+</body>
+</html>
