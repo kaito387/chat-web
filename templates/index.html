@@ -515,6 +515,31 @@ function renderMarkdown(text) {
     return `%%MATHBLOCK_${idx}%%`;
   });
 
+  // --- Fix emphasis delimiters for CJK text ---
+  // CommonMark flanking rules can fail when ** /* is adjacent to Unicode
+  // punctuation (e.g. curly quotes, full-width brackets). This is common in
+  // CJK text. We insert zero-width spaces to break the adjacency so that
+  // marked.js recognizes the delimiters correctly.
+  //
+  // Underscore emphasis (_ / __) has additional word-boundary requirements
+  // that always fail next to CJK characters (which are Unicode letters).
+  // We convert those to asterisk emphasis first.
+  //
+  // Step 1: Convert __text__ → **text** when next to non-word chars
+  protected_ = protected_.replace(/(^|[^\w])__([\s\S]+?)__([^\w]|$)/g, '$1**$2**$3');
+  protected_ = protected_.replace(/(^|[^\w])_([\s\S]+?)_([^\w]|$)/g, '$1*$2*$3');
+
+  // Step 2: Insert ZWSP between * delimiters and adjacent punctuation
+  //         (skip when the punctuation is * or _ itself)
+  protected_ = protected_.replace(/(\*+)(\p{P})/gu, (m, stars, punct) => {
+    if (punct === '*' || punct === '_') return m;
+    return stars + '​' + punct;
+  });
+  protected_ = protected_.replace(/(\p{P})(\*+)/gu, (m, punct, stars) => {
+    if (punct === '*' || punct === '_') return m;
+    return punct + '​' + stars;
+  });
+
   // --- Parse markdown ---
   let html = marked.parse(protected_);
 
